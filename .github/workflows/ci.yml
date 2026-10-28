@@ -33,6 +33,11 @@ jobs:
           curl -sf localhost:9093/-/ready
           for i in $(seq 30); do curl -sf localhost:3100/ready && break; sleep 5; done
           curl -sf "localhost:9090/api/v1/rules" | jq -e '.data.groups | length == 3'
-          curl -sf -u "admin:$(cat secrets/grafana_admin_password)" "localhost:3000/api/search?query=Fleet" | jq -e 'length == 1'
+          for i in $(seq 30); do
+            curl -sf -u "admin:$(cat secrets/grafana_admin_password)" "localhost:3000/api/search?query=Fleet" |
+              jq -e '.[] | select(.uid == "fleet-overview")' && break
+            sleep 5
+          done
+          curl -sf -u "admin:$(cat secrets/grafana_admin_password)" "localhost:3000/api/search?query=Fleet" | jq -e '.[] | select(.uid == "fleet-overview")'
       - if: failure()
         run: docker compose logs
