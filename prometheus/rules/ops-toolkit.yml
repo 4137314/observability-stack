@@ -1,0 +1,33 @@
+# Alerts for metrics exported by https://github.com/4137314/ops-toolkit
+groups:
+  - name: ops-toolkit
+    rules:
+      - alert: CertificateExpiringSoon
+        expr: ops_cert_expiry_seconds < 14 * 86400
+        labels: {severity: warning}
+        annotations:
+          summary: "Certificate {{ $labels.target }} on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+      - alert: CertificateExpired
+        expr: ops_cert_expiry_seconds <= 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Certificate {{ $labels.target }} on {{ $labels.instance }} has expired"
+
+      - alert: BackupTooOld
+        expr: ops_backup_age_seconds > 30 * 3600
+        labels: {severity: critical}
+        annotations:
+          summary: "Newest backup of {{ $labels.instance }} is {{ $value | humanizeDuration }} old"
+
+      - alert: BackupDataCheckFailed
+        expr: ops_backup_check_ok == 0
+        labels: {severity: critical}
+        annotations:
+          summary: "restic data check failed on {{ $labels.instance }}"
+
+      - alert: OpsCheckStale
+        expr: time() - node_textfile_mtime_seconds > 3 * 3600
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.file }} on {{ $labels.instance }} has not been updated for 3h"

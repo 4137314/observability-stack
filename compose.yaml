@@ -1,0 +1,73 @@
+# Production-ready monitoring for a small/medium fleet.
+# Copy .env.example to .env, put scrape targets in prometheus/targets/, then: docker compose up -d
+name: observability
+
+x-defaults: &defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: "3"}
+
+services:
+  prometheus:
+    <<: *defaults
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus:/prometheus
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:9090:9090"]
+
+  alertmanager:
+    <<: *defaults
+    image: prom/alertmanager:v0.34.1
+    command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager]
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - alertmanager:/alertmanager
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:9093:9093"]
+
+  blackbox:
+    <<: *defaults
+    image: prom/blackbox-exporter:v0.29.1
+    command: [--config.file=/etc/blackbox/blackbox.yml]
+    volumes: [./blackbox:/etc/blackbox:ro]
+
+  loki:
+    <<: *defaults
+    image: grafana/loki:3.7.9
+    command: [-config.file=/etc/loki/config.yml]
+    volumes:
+      - ./loki:/etc/loki:ro
+      - loki:/loki
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:3100:3100"]
+
+  grafana:
+    <<: *defaults
+    image: grafana/grafana:13.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+    secrets: [grafana_admin_password]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana:/var/lib/grafana
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:3000:3000"]
+
+secrets:
+  grafana_admin_password:
+    file: ${GRAFANA_ADMIN_PASSWORD_FILE:-./secrets/grafana_admin_password}
+
+volumes:
+  prometheus:
+  alertmanager:
+  loki:
+  grafana:

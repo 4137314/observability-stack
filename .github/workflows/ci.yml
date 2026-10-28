@@ -1,0 +1,38 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: system-features = nixos-test benchmark big-parallel kvm
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - run: nix flake check -L
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the Compose stack
+        run: |
+          mkdir -p secrets && openssl rand -hex 16 > secrets/grafana_admin_password
+          cp prometheus/targets/node.example.yml prometheus/targets/node.yml
+          docker compose up -d --wait --wait-timeout 180
+      - name: Smoke test
+        run: |
+          curl -sf localhost:9090/-/ready
+          curl -sf localhost:9093/-/ready
+          for i in $(seq 30); do curl -sf localhost:3100/ready && break; sleep 5; done
+          curl -sf "localhost:9090/api/v1/rules" | jq -e '.data.groups | length == 3'
+          curl -sf -u "admin:$(cat secrets/grafana_admin_password)" "localhost:3000/api/search?query=Fleet" | jq -e 'length == 1'
+      - if: failure()
+        run: docker compose logs

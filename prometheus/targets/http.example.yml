@@ -1,0 +1,3 @@
+# Copy to http.yml and list URLs to probe for availability and TLS expiry.
+- targets: ["https://www.example.com", "https://api.example.com/health"]
+  labels: {env: production}

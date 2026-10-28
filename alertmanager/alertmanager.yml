@@ -1,0 +1,31 @@
+# Replace the receivers with your channels (email, Slack, Teams, PagerDuty, webhook...).
+# Keep secrets out of Git: use *_file options (e.g. slack api_url_file, smtp_auth_password_file).
+route:
+  receiver: default
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: oncall
+      repeat_interval: 1h
+    - matchers: [severity="info"]
+      receiver: default
+      repeat_interval: 24h
+
+inhibit_rules:
+  # When a host is down, silence everything else about it.
+  - source_matchers: [alertname="HostDown"]
+    target_matchers: [severity=~"warning|info"]
+    equal: [instance]
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: http://localhost:9999/alerts
+        send_resolved: true
+  - name: oncall
+    webhook_configs:
+      - url: http://localhost:9999/oncall
+        send_resolved: true

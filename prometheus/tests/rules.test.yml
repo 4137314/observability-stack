@@ -1,0 +1,92 @@
+rule_files: [../rules/node.yml, ../rules/ops-toolkit.yml, ../rules/blackbox.yml]
+evaluation_interval: 1m
+
+tests:
+  - name: host down only after 3 minutes
+    interval: 1m
+    input_series:
+      - series: 'up{job="node", instance="web01"}'
+        values: "1 0 0 0 0"
+    alert_rule_test:
+      - {eval_time: 2m, alertname: HostDown, exp_alerts: []}
+      - eval_time: 4m
+        alertname: HostDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, instance: web01}
+            exp_annotations:
+              summary: web01 is not reachable
+              description: node_exporter on web01 has not been scraped for 3 minutes.
+
+  - name: almost full filesystem, read-only and tmpfs ignored
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="db01", mountpoint="/var", fstype="ext4"}'
+        values: "5x15"
+      - series: 'node_filesystem_size_bytes{instance="db01", mountpoint="/var", fstype="ext4"}'
+        values: "100x15"
+      - series: 'node_filesystem_readonly{instance="db01", mountpoint="/var", fstype="ext4"}'
+        values: "0x15"
+      - series: 'node_filesystem_avail_bytes{instance="db01", mountpoint="/run", fstype="tmpfs"}'
+        values: "1x15"
+      - series: 'node_filesystem_size_bytes{instance="db01", mountpoint="/run", fstype="tmpfs"}'
+        values: "100x15"
+      - series: 'node_filesystem_readonly{instance="db01", mountpoint="/run", fstype="tmpfs"}'
+        values: "0x15"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: HostFilesystemAlmostFull
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: db01, mountpoint: /var, fstype: ext4}
+            exp_annotations:
+              summary: db01:/var has less than 10% free space
+
+  - name: failed systemd unit
+    interval: 1m
+    input_series:
+      - series: 'node_systemd_unit_state{instance="web01", name="nginx.service", state="failed"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HostSystemdUnitFailed
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: web01, name: nginx.service, state: failed}
+            exp_annotations:
+              summary: nginx.service failed on web01
+
+  - name: ops-toolkit certificate and backup alerts
+    interval: 1m
+    input_series:
+      - series: 'ops_cert_expiry_seconds{instance="web01", target="example.com"}'
+        values: "432000"
+      - series: 'ops_backup_age_seconds{instance="db01", target="s3:https://backup/db01"}'
+        values: "180000"
+      - series: 'ops_backup_check_ok{instance="db01", target="s3:https://backup/db01"}'
+        values: "1"
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: CertificateExpiringSoon
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: web01, target: example.com}
+            exp_annotations:
+              summary: Certificate example.com on web01 expires in 5d 0h 0m 0s
+      - {eval_time: 0m, alertname: CertificateExpired, exp_alerts: []}
+      - eval_time: 0m
+        alertname: BackupTooOld
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: db01, target: "s3:https://backup/db01"}
+            exp_annotations:
+              summary: Newest backup of db01 is 2d 2h 0m 0s old
+      - {eval_time: 0m, alertname: BackupDataCheckFailed, exp_alerts: []}
+
+  - name: endpoint probe failure
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_http", instance="https://www.example.com"}'
+        values: "1 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EndpointDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: blackbox_http, instance: "https://www.example.com"}
+            exp_annotations:
+              summary: https://www.example.com is failing HTTP probes

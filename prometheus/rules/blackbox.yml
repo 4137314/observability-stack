@@ -1,0 +1,22 @@
+groups:
+  - name: blackbox
+    rules:
+      - alert: EndpointDown
+        expr: probe_success{job="blackbox_http"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.instance }} is failing HTTP probes"
+
+      - alert: EndpointSlow
+        expr: probe_duration_seconds{job="blackbox_http"} > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.instance }} takes more than 2s to respond"
+
+      - alert: EndpointCertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox_http"} - time() < 14 * 86400
+        labels: {severity: warning}
+        annotations:
+          summary: "TLS certificate of {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"

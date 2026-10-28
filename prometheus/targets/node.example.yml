@@ -1,0 +1,3 @@
+# Copy to node.yml (or node-<team>.yml) and list hosts running node_exporter.
+- targets: ["web01.example.com:9100", "db01.example.com:9100"]
+  labels: {env: production}
